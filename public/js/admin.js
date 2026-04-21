@@ -1,3 +1,5 @@
+const e = require("express");
+
 (async function bootstrapAdmin() {
   try {
     const user = await loadCurrentUser();
@@ -15,19 +17,28 @@
     }
 
     const result = await api("/api/admin/users");
-    document.getElementById("admin-users").innerHTML = result.users
-      .map(
-        (entry) => `
-          <tr>
-            <td>${entry.id}</td>
-            <td>${entry.username}</td>
-            <td>${entry.role}</td>
-            <td>${entry.displayName}</td>
-            <td>${entry.noteCount}</td>
-          </tr>
-        `
-      )
-      .join("");
+    // This is vulnerable to XSS since it uses innerHTML (which is dangerous because it allows any HTML content to be inserted into the page).
+    // As a result, I will use DOM creation and textContent to safely insert the user data into the page.
+    const adminUsersTable = document.getElementById("admin-users");
+    adminUsersTable.innerHTML = "";
+
+    // This chunk of code iterates over the list of users returned by the API and creates a table row for each user. This inserts their data into the appropriate cells. 
+    for (const entry of result.users) {
+      const row = document.createElement("tr");
+
+      for (const value of [
+        entry.id,
+        entry.username,
+        entry.role,
+        entry.displayName,
+        entry.noteCount
+      ]) {
+        const cell = document.createElement("td");
+        cell.textContent = String(value);
+        row.appendChild(cell);
+      }
+      adminUsersTable.appendChild(row);
+    }
   } catch (error) {
     document.getElementById("admin-warning").textContent = error.message;
   }
