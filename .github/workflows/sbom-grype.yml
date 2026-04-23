@@ -29,11 +29,10 @@ jobs:
         with:
           path: .
           fail-build: false
-          output-format: json
-          output-file: grype-report.json
+          output-format: sarif
 
       - name: Upload Grype Vulnerability Report
         uses: actions/upload-artifact@v4
         with:
           name: grype-report
-          path: grype-report.json
+          path: results.sarif
