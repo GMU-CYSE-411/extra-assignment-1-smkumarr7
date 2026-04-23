@@ -8,7 +8,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
@@ -23,10 +24,10 @@ jobs:
           name: sbom-report
           path: sbom.json
 
-      - name: Vulnerability Scan
+      - name: Run Grype Vulnerability Scan
         uses: anchore/scan-action@v3
         with:
-          path: ./
+          path: .
           fail-build: false
           output-format: json
           output-file: grype-report.json
