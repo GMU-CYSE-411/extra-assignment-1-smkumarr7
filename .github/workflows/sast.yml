@@ -1,0 +1,29 @@
+name: SAST Workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep and save report
+        run: semgrep scan --config=auto --json-output=semgrep-report.json .
+
+      - name: Upload SAST report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-report
+          path: semgrep-report.json
