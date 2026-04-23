@@ -4,35 +4,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  sbom:
-    runs-on: ubuntu-latest
+ sbom:
+   runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+   steps:
 
-      - name: Generate SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          path: .
-          format: cyclonedx-json
-          output-file: sbom.json
+   - uses: actions/checkout@v4
 
-      - name: Upload SBOM Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-report
-          path: sbom.json
+   - name: Generate SBOM
+     uses: anchore/sbom-action@v0
+     with:
+       path: .
+       format: cyclonedx-json
+       output-file: sbom.json
 
-      - name: Run Grype Vulnerability Scan
-        uses: anchore/scan-action@v3
-        with:
-          path: .
-          fail-build: false
-          output-format: sarif
+   - name: Upload SBOM Artifact
+     uses: actions/upload-artifact@v4
+     with:
+       name: sbom-report
+       path: sbom.json
 
-      - name: Upload Grype Vulnerability Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: grype-report
-          path: results.sarif
+   - name: Vulnerability Scan
+     uses: anchore/scan-action@v3
+     with:
+       path: ./
+       fail-build: false
