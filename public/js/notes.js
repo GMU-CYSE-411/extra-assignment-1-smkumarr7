@@ -2,9 +2,9 @@ function noteCard(note) {
   // The following lines are vulnerable to XSS since they directly insert user-generated content into the HTML without proper sanitization/escaping. 
   // To fix this, I will create DOM elements and set their textContent instead of using innerHTML.
   
-  // The purpose of the noteCardElement is to create a card for each note that displays the note's title, owner, ID, etc.
-  const noteCardElement = document.createElement("article");
-  noteCardElement.className = "note-card";
+  // The purpose of the cardElement is to create a card for each note that displays the note's title, owner, ID, etc.
+  const cardElement = document.createElement("article");
+  cardElement.className = "note-card";
 
   // The purpose of the titleElement is to display the title of the note.
   const titleElement = document.createElement("h3");
@@ -21,11 +21,11 @@ function noteCard(note) {
   bodyElement.textContent = note.body;
 
   // The following lines append the title, meta, and body elements to the note card element.
-  noteCardElement.appendChild(titleElement);
-  noteCardElement.appendChild(metaElement);
-  noteCardElement.appendChild(bodyElement);
+  cardElement.appendChild(titleElement);
+  cardElement.appendChild(metaElement);
+  cardElement.appendChild(bodyElement);
 
-  return noteCardElement;
+  return cardElement;
 }
 
 async function loadNotes(ownerId, search) {
@@ -44,9 +44,9 @@ async function loadNotes(ownerId, search) {
   // This is vulnerable to XSS since it uses innerHTML, which can execute any scripts included in the note's title or body.
   //notesList.innerHTML = result.notes.map(noteCard).join("");
   // To fix this, I will insert the following code to append the note cards to the notesList element instead of using innerHTML.
-  notesList.innerHTML = "";
-  for (const note of result.notes) {
-    notesList.appendChild(noteCard(note));
+  notesList.replaceChildren(); // this is safe because we are avoiding innerHTML and instead using DOM manipulation.
+  for (const noteInList of result.notes) {
+    notesList.appendChild(noteCard(noteInList));
   }
 }
 
@@ -71,7 +71,10 @@ document.getElementById("search-form").addEventListener("submit", async (event) 
   event.preventDefault();
 
   const formData = new FormData(event.currentTarget);
-  await loadNotes(formData.get("ownerId"), formData.get("search"));
+  // I added the two following lines to load the current user and pass their id. This is a safe way to do so because it ensures that the user can only search their own notes, preventing information disclosure of someone else's notes.
+  const currentUser = await loadCurrentUser();
+  await loadNotes(currentUser.id, formData.get("search"));
+
 });
 
 document.getElementById("create-note-form").addEventListener("submit", async (event) => {
@@ -91,7 +94,10 @@ document.getElementById("create-note-form").addEventListener("submit", async (ev
     body: JSON.stringify(payload)
   });
 
-  await loadNotes(payload.ownerId, "");
+  // I added const currentUser because loadNotes requires an ownerId. B/c I removed ownerId from the payload, I need to load the current user to get their id to pass to loadNotes.
+  // The following code is safe bc it ensures that the user can only load their own notes, preventing information disclosure of someone else's notes.
+  const currentUser = await loadCurrentUser();
+  await loadNotes(currentUser.id, "");
   event.currentTarget.reset();
-  document.getElementById("create-owner-id").value = payload.ownerId;
+  document.getElementById("create-owner-id").value = currentUser.id;
 });

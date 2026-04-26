@@ -8,6 +8,18 @@ function sendPublicFile(response, fileName) {
   response.sendFile(path.join(__dirname, "..", "public", fileName));
 }
 
+// I am adding this function to implement real CSRF protection by ensuring that all state-changing requests come from the same origin, which will avoid malicious websites from making unauthorized requests.
+function ensuringSameOrigin(req, resp, next) {
+  const reqOrigin = req.get("Origin");
+  const serverOrigin = `${req.protocol}://${req.get("Host")}`;
+
+  // If the request has a header for origin and if the origin is different from the server's origin, it will block the request and return a 403 response, preventing CSRF attacks.
+  if (reqOrigin && reqOrigin !== serverOrigin) {
+    return resp.status(403).json({ error: "Cross-origin requests are not allowed!!" });
+  }
+  next();
+}
+
 // The following function is vulnerable to session fixation due to the fact that Math.random() is not secure. It can generate session IDs that can be easily predicted by an attacker, allowing them to create a valid session ID and hijack a user's session.
 /*
 function createSessionId() {
@@ -15,9 +27,9 @@ function createSessionId() {
 }
 */
 // I added the following function to fix the session fixation vulnerabiltiy. 
-const cyrpto = require("crypto"); // This line is added to import the crypto module. This is a more secure way to generate random session IDs.
+const crypto = require("crypto"); // This line is added to import the crypto module. This is a more secure way to generate random session IDs.
 function createSessionId() {
-  return `SESSION-${cyrpto.randomBytes(16).toString("hex")}-${Date.now()}`;
+  return `SESSION-${crypto.randomBytes(16).toString("hex")}-${Date.now()}`;
 }
 
 
@@ -93,7 +105,8 @@ async function createApp() {
     response.json({ user: request.currentUser });
   });
 
-  app.post("/api/login", async (request, response) => {
+  // I added the ensuringSameOrigin function to the login route to mitigate CSRF attacks by ensure the login request is coming from the same origin.
+  app.post("/api/login", ensuringSameOrigin, async (request, response) => {
     const username = String(request.body.username || "");
     const password = String(request.body.password || "");
 
@@ -160,12 +173,14 @@ async function createApp() {
     });
   });
 
-  app.post("/api/logout", async (request, response) => {
+  // I added the ensuringSameOrigin function to the logout route to mitigate CSRF attacks by ensuring the logout request is coming from the same origin.
+  app.post("/api/logout", requireAuth, ensuringSameOrigin, async (request, response) => {
     if (request.cookies.sid) {
       await db.run("DELETE FROM sessions WHERE id = ?", [request.cookies.sid]);
     }
 
-    response.clearCookie("sid");
+    // I modified the following line to make sure the cookie is properly cleared on the client side, which could prevent potential issues with session fixation if the cookie is not cleared correctly.
+    response.clearCookie("sid", { path: "/" });
     response.json({ ok: true });
   });
 
@@ -173,12 +188,12 @@ async function createApp() {
     // The use of ownerID is vulnerable to IDOR since it allows users to access notes they don't own.
     // const ownerId = request.query.ownerId || request.currentUser.id;
     // To fix this issue, I will set ownerId to the current user's Id by default, and the user cannot override it by providing a different ownerId in the query parameters. 
-    const ReqOwnerId = request.query.ownerId ? Number(request.query.ownerId) : request.currentUser.id;
+    const reqOwnerId = request.query.ownerId ? Number(request.query.ownerId) : request.currentUser.id;
     const search = String(request.query.search || "");
 
     let ownerId = request.currentUser.id;
-    if (request.currentUser.role === "admin" && ReqOwnerId) {
-      ownerId = ReqOwnerId;
+    if (request.currentUser.role === "admin" && reqOwnerId) {
+      ownerId = reqOwnerId;
     }
 
     // The following lines are vulnerable to SQL injection due to the use of string interpolation to construct a SQL query.
@@ -203,7 +218,8 @@ async function createApp() {
   });
 
   // To fix the IDOR vulnerability, I will set the ownerID to the current user's Id by default.
-  app.post("/api/notes", requireAuth, async (request, response) => {
+  // I added the ensuringSameOrigin function to the notes route to mitigate CSRF attacks by ensuring the notes request is coming from the same origin.
+  app.post("/api/notes", requireAuth, ensuringSameOrigin, async (request, response) => {
     const ownerId = request.currentUser.id;
     const title = String(request.body.title || "");
     const body = String(request.body.body || "");
@@ -224,10 +240,10 @@ async function createApp() {
     // The following line is vulnerable because userId can be modified to access another user's settings (IDOR vulnerability).
     // const userId = Number(request.query.userId || request.currentUser.id);
     // In order to fix this issue, I will add the following lines, which will check if the user is an admin and if a userId is provided in the query parameters. If they are true, it will use the provided userId. 
-    const ReqUserId = request.query.userId ? Number(request.query.userId) : null;
+    const reqUserId = request.query.userId ? Number(request.query.userId) : null;
     let userId = request.currentUser.id;
-    if (request.currentUser.role === "admin" && ReqUserId) {
-      userId = ReqUserId;
+    if (request.currentUser.role === "admin" && reqUserId) {
+      userId = reqUserId;
     }
 
 
@@ -251,7 +267,8 @@ async function createApp() {
     response.json({ settings });
   });
 
-  app.post("/api/settings", requireAuth, async (request, response) => {
+  // I added the ensuringSameOrigin function to the settings route to mitigate CSRF attacks by ensuring a settings request is coming from the same origin.
+  app.post("/api/settings", requireAuth, ensuringSameOrigin, async (request, response) => {
     // I commeted out the userId line and replaced it with the following line so that users can only update their own settings.
     // const userId = Number(request.body.userId || request.currentUser.id);
     const userId = request.currentUser.id;
@@ -273,7 +290,8 @@ async function createApp() {
   //app.get("/api/settings/toggle-email", requireAuth, async (request, response) => {
   
   // The following code helps improve security against the CSRF vulnerability by using a POST request and requiring a valid session cookie for authentication.
-  app.post("/api/settings/toggle-email", requireAuth, async (request, response) => {
+  // I added the ensuringSameOrigin function to the toggle-email route to mitigate CSRF attacks by ensuring a toggle-email request is coming from the same origin.
+  app.post("/api/settings/toggle-email", requireAuth, ensuringSameOrigin, async (request, response) => {
   
     const enabled = request.body.enabled ? 1 : 0;
     await db.run("UPDATE settings SET email_opt_in = ? WHERE user_id = ?", [
@@ -289,12 +307,12 @@ async function createApp() {
   });
 
   // I will add real server-side authorization to ensure that only admin users can access the list of all users.
-  function onlyAdmin(request, response, next) {
-    if (!request.currentUser) {
-      return response.status(401).json({ error: "Authentication is required!!" });
+  function onlyAdmin(req, resp, next) {
+    if (!req.currentUser) {
+      return resp.status(401).json({ error: "Authentication is required!!" });
     }
-    if (request.currentUser.role !== "admin") {
-      return response.status(403).json({ error: "Admin access required!!" });
+    if (req.currentUser.role !== "admin") {
+      return resp.status(403).json({ error: "Admin access required!!" });
     }
     next();
   }
